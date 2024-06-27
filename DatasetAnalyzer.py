@@ -3,6 +3,9 @@ import json
 import matplotlib.pyplot as plt
 import seaborn as sns
 import os
+import apiCall
+import json
+
 
 def main():
         
@@ -33,18 +36,28 @@ def main():
     monthlyPlayedSongs['total_mins_played'] = monthlyPlayedSongs['total_mins_played']/60000
     monthlyPlayedSongs = monthlyPlayedSongs.sort_values(by=['year_month', 'total_mins_played'], ascending=[True, False])
 
+    apiCall.setup_connection()
+
     infos = []
     lens = []
     for period in monthlyPlayedSongs['year_month'].unique():
         period_df = monthlyPlayedSongs[monthlyPlayedSongs['year_month'] == period]
         period_df.columns = ['year_month', 'spotify_track_uri', 'total_mins_played', 'played_count']
-        period_df = period_df[period_df['played_count'] > 5]
-        period_df = period_df[period_df['total_mins_played'] > 10]
-        infos.append(str(period)+" songs after filters: "+ str(len(period_df)))
-        lens.append(len(period_df))
+        period_df = period_df[period_df['played_count'] >= 3]
+        #period_df = period_df[period_df['total_mins_played'] > 10] 
+        threshold = period_df['total_mins_played'].quantile(60/100.00)
+        period_df = period_df[period_df['total_mins_played'] >= threshold]
         period_df = period_df.merge(songs, on="spotify_track_uri", how="left")
-        print(period_df[['year_month','master_metadata_track_name','master_metadata_album_album_name','master_metadata_album_artist_name']].head(8))
-
+        if len(period_df) > 100:
+            period_df = period_df[:100]
+        uris = []
+        description = []
+        for index, row in period_df.iterrows():
+            uris.append(row['spotify_track_uri'])
+            description.append(row['master_metadata_track_name']+f" - {row['master_metadata_album_artist_name']} -- mins: {round(row['total_mins_played'],0)}")
+        description = "----".join(description)
+        playlist_id = apiCall.createPlaylist(period.strftime('%m-%Y'), description[:500])
+        apiCall.add_items_to_playlist(playlist_id, uris)
 
 
 def getListeningSession(df):
@@ -74,10 +87,10 @@ def getListeningSession(df):
 def loadData():
     # Carica il file JSON
     all_data = []
-    for jsonPath in os.listdir("./Dataset"):
+    for jsonPath in os.listdir("./TrackAnalyzer/Dataset"):
         if jsonPath.endswith(".json"): 
             if "Audio" in jsonPath.split("_"):
-                with open(jsonPath, encoding="utf-8") as file:
+                with open("./TrackAnalyzer/Dataset/"+jsonPath, encoding="utf-8") as file:
                     data = json.load(file)
                     all_data.extend(data) 
                     
