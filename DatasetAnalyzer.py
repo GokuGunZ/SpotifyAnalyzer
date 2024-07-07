@@ -8,8 +8,36 @@ import json
 
 
 def main():
-        
-    df = loadData()
+    global user
+    user = "Pit"
+
+    df = loadData(user)
+    apiCall.setup_connection(user)
+
+    # Canzoni
+    songs = df[['spotify_track_uri', 'master_metadata_track_name','master_metadata_album_album_name', 'master_metadata_album_artist_name']].drop_duplicates().reset_index(drop=True)
+
+    # Artisti
+    artists = df[['master_metadata_album_artist_name']].drop_duplicates().reset_index(drop=True)
+
+    # Album
+    albums = df[['master_metadata_album_album_name', 'master_metadata_album_artist_name']].drop_duplicates().reset_index(drop=True)
+
+    # Aggiungi chiavi per artisti e album nel DataFrame principale
+    df = df.merge(songs, on=['spotify_track_uri', 'master_metadata_track_name', 'master_metadata_album_album_name', 'master_metadata_album_artist_name'], how='left')
+    df = df.merge(artists, on='master_metadata_album_artist_name', how='left')
+    df = df.merge(albums, on=['master_metadata_album_album_name', 'master_metadata_album_artist_name'], how='left')
+    
+    # Estrai mese e anno dai timestamp
+    df['month'] = df['ts'].dt.month
+    df['year'] = df['ts'].dt.year
+
+    df['year_month'] = df['ts'].dt.to_period('M')
+
+    songUris = songs["spotify_track_uri"].apply(lambda x: str(x).split(":")[-1])
+    #apiCall.getTracksInfos(list(songUris))
+
+def createMonthlyPlaylists(df):
     
     # Canzoni
     songs = df[['spotify_track_uri', 'master_metadata_track_name','master_metadata_album_album_name', 'master_metadata_album_artist_name']].drop_duplicates().reset_index(drop=True)
@@ -36,7 +64,7 @@ def main():
     monthlyPlayedSongs['total_mins_played'] = monthlyPlayedSongs['total_mins_played']/60000
     monthlyPlayedSongs = monthlyPlayedSongs.sort_values(by=['year_month', 'total_mins_played'], ascending=[True, False])
 
-    apiCall.setup_connection()
+    apiCall.setup_connection(user)
 
     infos = []
     lens = []
@@ -58,7 +86,6 @@ def main():
         description = "----".join(description)
         playlist_id = apiCall.createPlaylist(period.strftime('%m-%Y'), description[:500])
         apiCall.add_items_to_playlist(playlist_id, uris)
-
 
 def getListeningSession(df):
     df = df.sort_values(by='ts')
@@ -84,13 +111,14 @@ def getListeningSession(df):
     print(session_stats.head())
     return session_stats
 
-def loadData():
+def loadData(userFolderName):
     # Carica il file JSON
     all_data = []
-    for jsonPath in os.listdir("./TrackAnalyzer/Dataset"):
+    directory_Path = "./TrackAnalyzer/Dataset/" + userFolderName
+    for jsonPath in os.listdir(directory_Path):
         if jsonPath.endswith(".json"): 
             if "Audio" in jsonPath.split("_"):
-                with open("./TrackAnalyzer/Dataset/"+jsonPath, encoding="utf-8") as file:
+                with open(directory_Path+"/"+jsonPath, encoding="utf-8") as file:
                     data = json.load(file)
                     all_data.extend(data) 
                     
